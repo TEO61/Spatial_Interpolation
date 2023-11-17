@@ -1,0 +1,289 @@
+---
+title: "Assessing the Spatial Interpolation Method -Kriging on Terrain Across Switzerland
+  Using R "
+author: "Theophilus Asante-Manteaw Stud. No.: 2635242"
+date: "2023-11-15"
+output:
+  pdf_document:
+    number_sections: yes
+    toc: yes
+    toc_depth: 3
+---
+
+# Introduction
+
+## Approach and Explanation
+
+### R Packages
+
+Geostatistics relies on several prominent R packages (a few listed below), each offering unique tools for spatial data analysis. Notably, geoR provides datasets and simplified functions for compositional, directional, and spatial data, featuring capabilities such as ternary diagrams and kriging interpolation. gstat stands out for its comprehensive suite of geostatistical tools, covering variogram modeling, kriging, and spatial prediction, along with functions for data manipulation and visualization. The sp package is dedicated to spatial data analysis, offering classes and methods for handling various spatial data types. Lastly, GeoModels specializes in fitting geostatistical models, including variogram modeling and spatial prediction. Together, these packages form a versatile toolkit for spatial data analysis without specific institutional affiliations.
+
+
+
+```{r, message=FALSE, warning=FALSE}
+
+library(ggplot2) #data visualization
+library(gstat) #geostatistics
+library(RColorBrewer) #color palette
+library(sf) #simple feature spatial objects
+library(viridis)
+library(sp)
+
+```
+
+### Data Preparation
+
+The script below imports the dataset named "All1.csv" into R, which likely contains spatial information such as coordinates ("x" and "y") and a variable of interest ("z"). The script then transforms this data into a spatial object using the sf package, allowing for geographic information to be represented and analyzed. Additionally, it incorporates a spatial borders dataset ("borders.shp") and ensures that both datasets share a common coordinate reference system (CRS).
+
+The main function of the script is to generate a spatial visualization using the ggplot2 package. The output, named precip.plot1, is a plot that overlays the spatial borders and the transformed spatial data. The color of the plot is determined by the values of the "z" variable, with a gradient color scale applied for better visualization. This output serves to provide an insightful representation of the spatial distribution of the variable of interest within the defined borders.
+
+In summary, the script prepares and transforms spatial data, incorporates spatial borders, and creates a visually informative plot to illustrate the geographical distribution of a variable ("z").
+
+
+```{r,message=FALSE, warning=FALSE}
+library(rgdal)
+library(sp)
+swiss <- read.csv("D:\\Personal\\Wits\\Academics\\STATS\\Spatial Statistics\\Mini_Project_2\\Data\\Spatial_Interpolation\\Switzerland\\All1.csv")
+
+swiss1 = swiss
+class(swiss1)
+coordinates(swiss1) = ~x+y
+coordinates(swiss1)[1:5,]
+library(geoR)
+
+swiss.sf <- st_as_sf(swiss, coords = c("x", "y"),crs = 2056)
+
+
+swiss.bord1 <- readOGR("D:\\Personal\\Wits\\Academics\\STATS\\Spatial Statistics\\Mini_Project_2\\Data\\Spatial_Interpolation\\Switzerland\\borders.shp","borders")
+plot(swiss.bord1)
+
+plot(swiss1,pch =20, col = "blue", main = "Geodata Plot",add=TRUE)
+
+swiss.bord <- st_read("D:\\Personal\\Wits\\Academics\\STATS\\Spatial Statistics\\Mini_Project_2\\Data\\Spatial_Interpolation\\Switzerland\\borders.shp", quiet = TRUE)
+st_crs(swiss.bord) <- 2056
+
+swiss.bord <- st_transform(swiss.bord, 2056)
+
+st_crs(swiss.bord)
+
+library(ggplot2) #data visualization
+
+precip.plot1 = ggplot() +
+  geom_sf(data = swiss.bord) +
+  geom_sf(data = swiss.sf, 
+          aes(col = z),
+          size = 2.5,
+          alpha = 0.9) +
+  #scale_color_viridis_c(direction = -1) +
+  scale_colour_gradient(low = "cadetblue2", high = "dodgerblue4") +
+  theme_bw()
+
+precip.plot1
+```
+
+### Data Interpretation
+The script below initially visualizes the distribution of observed elevation data across Switzerland, revealing a right-skewed distribution. To address this skewness, a log transformation is applied, resulting in a more symmetric distribution. The script concludes with a scatter plot of the logged elevation data.
+
+In the context of variogram modeling, the right-skewed distribution in the original data suggests spatial dependence structures with a similar skewness. The choice of variogram model is crucial, and potential models include Exponential, Matérn, or Gaussian, depending on the observed spatial patterns. Variogram analysis is essential to select an accurate model that represents the spatial dependence in the logged elevation data.
+```{r, message=FALSE, warning=FALSE}
+
+library(geoR)
+library(sp)
+
+hist(swiss1$z, 
+     main ="Histogram of Observed Elevation across Switzerland")
+rug(swiss1$z)
+
+
+##log transformation
+swiss.sf$lz = log(swiss.sf$z + 1e-1)
+hist(swiss.sf$lz, 
+     main ="Histogram of Logged Observed Elevation across Switzerland")
+rug(swiss1$lz)
+
+plot(lz ~ 1, swiss.sf, 
+     main = "Scatter plot of Logged Elevation Data")
+
+```
+
+### Variogram Modelling
+The script below performs variogram modeling on log-transformed elevation data for Switzerland, exploring diverse models such as Spherical, Exponential, Matérn, and Gaussian. Variogram models are characterized by parameters influencing their shapes. Kriging interpolation is applied using the selected spherical variogram model (pptS.vgm2). Visualizations depict variogram models and kriging predictions, offering insights into spatial patterns. The script provides a thorough analysis of variogram models to capture underlying spatial structures in log-transformed elevation data.
+
+```{r, message=FALSE, warning=FALSE}
+library(ggplot2) #data visualization
+library(gstat) #geostatistics
+library(sf)
+library(geoR)
+
+
+ppt.var = variogram(lz ~ 1,swiss.sf)
+
+##Create the model by hand
+modNugget <- 0.0 #intercept like term
+modRange <- 100000 #distance of the plateua
+modSill <- 0.75 #semivariance at the rang
+
+
+ppt.vgm1 <- vgm(psill = modSill, 
+                "Sph", #spherical model
+                range = modRange, 
+                nugget = modNugget)
+
+pptS.vgm2 <- fit.variogram(ppt.var, ppt.vgm1)
+
+plot(ppt.var, pptS.vgm2, 
+     main = "Swiss Precip. Spherical Variogram Model")
+
+#####################################################
+
+modNugget <- 0 #intercept like term
+modRange <- 100000 #distance of the plateua
+modSill <- 0.75 #semivariance at the rang
+
+
+ppt.vgm1 <- vgm(psill = modSill, 
+                "Exp", #Exponential model
+                range = modRange, 
+                nugget = modNugget)
+
+pptE.vgm2 <- fit.variogram(ppt.var, ppt.vgm1)
+
+plot(ppt.var, pptE.vgm2, 
+     main = "Swiss Precip. Exponential Variogram Model")
+
+#####################################################
+
+modNugget <- 0 #intercept like term
+modRange <- 100000 #distance of the plateua
+modSill <- 0.75 #semivariance at the rang
+modkappa <- 0.5 
+
+
+ppt.vgm1 <- vgm(psill = modSill, 
+                "Mat", #Matern model 
+                range = modRange, 
+                nugget = modNugget,
+                kappa = modkappa)
+            
+pptM.vgm2 <- fit.variogram(ppt.var, ppt.vgm1)
+
+plot(ppt.var, pptM.vgm2, 
+     main = "Swiss Precip. Matern Variogram Model")
+
+#####################################################
+modNugget <- 0 #intercept like term
+modRange <- 100000 #distance of the plateua
+modSill <- 0.75 #semivariance at the rang
+
+ppt.vgm1 <- vgm(psill = modSill, 
+                "Gau", #Gaussian model
+                range = modRange, 
+                nugget = modNugget)
+
+pptG.vgm2 <- fit.variogram(ppt.var, ppt.vgm1)
+
+plot(ppt.var, pptG.vgm2, 
+     main = "Swiss Precip. Gaussian Variogram Model")
+
+```
+
+
+
+### Kriging
+The script focuses on kriging, a geostatistical interpolation method, applied to log-transformed elevation data for Switzerland. The spherical variogram model (pptS.vgm2) is employed to capture spatial dependence in the log-transformed precipitation data. The kriging predictions (ppt.pred.ked) are visualized on a map and a contour plot, providing insights into the spatial distribution of log-transformed precipitation across the region.
+
+Additionally, the script assesses the quality of the kriging model output. Various metrics such as Root Mean Squared Error (RMSEP), Prediction r^2, residual bubble plot, and a residual plot are employed to evaluate the performance of the kriging model. These assessments contribute to understanding the accuracy and reliability of the kriging predictions based on the selected spherical variogram model.
+
+```{r, message=FALSE, warning=FALSE}
+library(geoR)
+library(sf)
+
+
+ppt.pred.ked = krige(lz ~ z,
+                     locations = swiss.sf,
+                     newdata = swiss.sf,
+                     model = pptS.vgm2)
+
+
+ppt.pred.ked = krige(formula = lz ~ 1, locations = swiss.sf, 
+                     newdata = swiss.sf, model = pptS.vgm2)
+
+
+my.pal = brewer.pal(9, "Blues")
+
+plot(swiss.bord1)
+
+##Plot predicted values
+plot(ppt.pred.ked["var1.pred"],
+     col = my.pal,
+     borders=swiss.bord,
+     main = "Swiss Terrain Modelling with Kriging",add=TRUE)
+
+spplot(swiss1, "z", 
+       col.regions =colorRampPalette(c("white", "blue"))(100), 
+       main = "Contour Plot of Elevation")
+
+
+```
+
+
+
+### Assessing the Model Output
+
+
+In this script, an assessment of the performance of a kriging model applied to log-transformed precipitation data is conducted. The model is based on a spherical variogram (pptS.vgm2). The evaluation involves various metrics to gauge the accuracy and reliability of the predictions.
+
+The Root Mean Squared Error of Prediction (RMSEP) is employed as a measure of the average prediction error. The obtained RMSEP of approximately 0.5232 suggests that, on average, the kriging model performs well in predicting log-transformed precipitation values across the Swiss region.
+
+The Prediction r^2 (Coefficient of Determination) is utilized to quantify the proportion of variance in the observed values that can be explained by the predicted values. With a value of approximately 0.7284, the model demonstrates a strong overall correlation between the observed and predicted log-transformed precipitation values. This indicates that the model is effective in capturing the underlying patterns in the data.
+
+To visually inspect the performance, two plots are generated. The Residual Bubble Plot provides a spatial representation of the residuals, aiding in the identification of any discernible patterns or trends. Meanwhile, the Residual Plot is a scatter plot of predicted values against residuals, revealing the model's ability to capture data patterns. The plots collectively suggest that the model is generally unbiased, with residuals centered around zero.
+
+In conclusion, the kriging model based on the spherical variogram exhibits satisfactory predictive accuracy and reliability for log-transformed precipitation values in Switzerland. The assessment metrics collectively provide a comprehensive understanding of the model's performance, showcasing its capability to capture and explain the spatial variability in the precipitation data.
+
+```{r, message=FALSE, warning=FALSE}
+
+## Assessing Model Quality
+
+ppt.cv.uk = krige.cv(lz ~ z,
+                     locations = swiss.sf,
+                     model = pptS.vgm2,
+                     nmax = 40,
+                     nfold = 5)
+
+head(ppt.cv.uk)
+
+
+##RMSEP
+
+sqrt(mean(ppt.cv.uk$residual^2))
+
+##Prediction r^2
+cor(ppt.cv.uk$observed, ppt.cv.uk$var1.pred)^2
+
+## Residual Bubble Plot
+sp::bubble(as_Spatial(ppt.cv.uk)["residual"], pch = 16)
+
+
+##Residual Plot
+plot(ppt.cv.uk$var1.pred, ppt.cv.uk$residual, 
+     xlab = 'PPT Predicted Values', 
+     ylab = 'PPT Residuals',
+     main="Residual Plot")
+
+abline(h = 0, lty = 2)
+
+```
+
+## Conclussion
+In this comprehensive script, a thorough exploration and analysis of log-transformed precipitation data for Switzerland are conducted, focusing on kriging as the primary geostatistical technique. The script begins by fitting variogram models to the log-transformed elevation data, employing different variogram models such as spherical, exponential, Matern, and Gaussian. These models are crucial for capturing and understanding the spatial dependence and variability within the dataset.
+
+Subsequently, kriging, a spatial interpolation method, is employed based on the chosen variogram model (in this case, the spherical variogram). Kriging is used to predict log-transformed precipitation values across the Swiss region. The resulting predictions are visualized through various plots, including spatial plots and contour plots, providing a clear representation of the spatial distribution of predicted precipitation.
+
+The assessment of the kriging model's quality involves key performance metrics. The Root Mean Squared Error of Prediction (RMSEP) is utilized to quantify the average prediction error, providing a measure of the model's accuracy. Additionally, the Prediction r^2 is calculated to assess the overall correlation between observed and predicted values, indicating the model's explanatory power.
+
+To further inspect the model's performance, visualizations such as the Residual Bubble Plot and Residual Plot are generated. These plots allow for a spatial and graphical examination of the model's residuals, providing insights into potential patterns or trends in prediction errors.
+
+The final evaluation of the kriging model yields positive results, with an RMSEP indicating relatively low prediction errors and a high Prediction r^2 signifying strong overall correlation. The model's residuals, as visualized in the plots, appear unbiased, reinforcing the reliability of the kriging predictions.
+
+In conclusion, the script presents a robust geostatistical analysis of log-transformed precipitation data in Switzerland, showcasing the application of variogram modeling and kriging for spatial interpolation. The results indicate that the chosen kriging model effectively captures the underlying spatial patterns in the log-transformed precipitation data, providing valuable insights into the spatial distribution of precipitation across the Swiss region.
